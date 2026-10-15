@@ -6,8 +6,8 @@ on:
   push:
     paths:
       - 'KiberOperatorAndroid_project.zip'
+      - 'icon.png'
       - '.github/workflows/build-apk.yml'
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,6 +29,50 @@ jobs:
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Create app icons
+        run: |
+          python3 -m pip install Pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageOps
+          from pathlib import Path
+
+          source = Path("icon.png")
+          if not source.exists():
+              raise SystemExit("Upload icon.png to the repository root")
+
+          img = Image.open(source).convert("RGBA")
+          side = min(img.size)
+          left = (img.width - side) // 2
+          top = (img.height - side) // 2
+          img = img.crop((left, top, left + side, top + side))
+
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+
+          root = Path("KiberOperatorAndroid/app/src/main/res")
+          for folder, size in sizes.items():
+              dest = root / folder
+              dest.mkdir(parents=True, exist_ok=True)
+              icon = img.resize((size, size), Image.Resampling.LANCZOS)
+              icon.save(dest / "ic_launcher.png")
+              icon.save(dest / "ic_launcher_round.png")
+
+          manifest = Path("KiberOperatorAndroid/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          text = text.replace(
+              '<application',
+              '<application\n        android:icon="@mipmap/ic_launcher"\n        android:roundIcon="@mipmap/ic_launcher_round"',
+              1
+          )
+          manifest.write_text(text)
+          print("App icons created")
+          PY
+          
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
